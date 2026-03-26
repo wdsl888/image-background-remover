@@ -15,7 +15,7 @@ const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 
 const GROUND_Y = 440;
-let mario = { x: 50, y: GROUND_Y-32, w: 28, h: 32, vx: 0, vy: 0, onGround: true };
+let mario = { x: 100, y: GROUND_Y-32, w: 28, h: 32, vx: 0, vy: 0, onGround: true };
 let keys = {};
 let cameraX = 0;
 let enemies = [];
@@ -26,122 +26,88 @@ let score = 0;
 
 // 初始化关卡
 function initLevel() {
-    // 地面
-    for (let i = 0; i < 50; i++) blocks.push({ x: i*32, y: GROUND_Y, w: 32, h: 60, type: 'ground' });
+    // 地面 (更长)
+    for (let i = 0; i < 100; i++) blocks.push({ x: i*32, y: GROUND_Y, w: 32, h: 60, type: 'ground' });
     
-    // 砖块平台
-    const bricks = [
-        [320, 320, 5], [576, 256, 2], [640, 320, 4], [1088, 256, 3],
-        [1280, 192, 2], [1408, 320, 3], [1728, 256, 4], [1856, 192, 2],
-        [2048, 320, 3]
-    ];
-    bricks.forEach(b => {
+    // 砖块 (简化)
+    [[384,320,3], [640,256,2], [704,320,4], [1152,256,3], [1792,256,4], [2112,320,3]].forEach(b => {
         for (let i = 0; i < b[2]; i++) blocks.push({ x: b[0]+i*32, y: b[1], w: 32, h: 32, type: 'brick' });
     });
     
     // 问号箱
-    const questions = [
-        [352, 256], [416, 256], [448, 256], [480, 256], [608, 192],
-        [1120, 192], [1184, 256], [1312, 256], [1760, 192], [2080, 256]
-    ];
-    questions.forEach(q => blocks.push({ x: q[0], y: q[1], w: 32, h: 32, type: 'question', hit: false }));
+    [[416,256], [480,256], [672,192], [1184,192], [1824,192], [2144,256]].forEach(q => 
+        blocks.push({ x: q[0], y: q[1], w: 32, h: 32, type: 'question', hit: false }));
     
     // 管道
-    [[832, 64], [960, 96], [1536, 64], [2496, 64]].forEach(p => 
+    [[896,64], [1024,96], [1600,64], [2560,64]].forEach(p => 
         blocks.push({ x: p[0], y: GROUND_Y-p[1], w: 64, h: p[1], type: 'pipe' }));
     
-    // 敌人
-    [480, 672, 1056, 1344, 1696, 2048, 2240].forEach(x => 
+    // 敌人 - 放远一点
+    [800, 1100, 1500, 1900, 2200, 2500].forEach(x => 
         enemies.push({ x, y: GROUND_Y-32, w: 32, h: 32, vx: -1, alive: true }));
     
     // 旗杆
-    blocks.push({ x: 2720, y: GROUND_Y-200, w: 8, h: 200, type: 'flagpole' });
+    blocks.push({ x: 3000, y: GROUND_Y-200, w: 8, h: 200, type: 'flagpole' });
 }
 
 function update() {
     if (gameOver || won) return;
     
     // 移动
-    if (keys['ArrowLeft'] || keys['KeyA']) { mario.vx = -4; }
-    else if (keys['ArrowRight'] || keys['KeyD']) { mario.vx = 4; }
+    if (keys['ArrowLeft'] || keys['KeyA']) mario.vx = -5;
+    else if (keys['ArrowRight'] || keys['KeyD']) mario.vx = 5;
     else mario.vx = 0;
     
     if ((keys['Space'] || keys['ArrowUp'] || keys['KeyW']) && mario.onGround) {
-        mario.vy = -11;
+        mario.vy = -12;
         mario.onGround = false;
     }
     
-    mario.vy += 0.5;
+    mario.vy += 0.6;
     
     // X移动
     mario.x += mario.vx;
     if (mario.x < 0) mario.x = 0;
     
-    // 简单的块碰撞 - X轴
-    blocks.forEach(b => {
-        if (b.type === 'ground' || b.type === 'brick' || b.type === 'pipe') {
-            if (mario.x + mario.w > b.x && mario.x < b.x + b.w && 
-                mario.y + mario.h > b.y && mario.y < b.y + b.h) {
-                if (mario.vx > 0) mario.x = b.x - mario.w;
-                else if (mario.vx < 0) mario.x = b.x + b.w;
-            }
-        }
-    });
-    
     // Y移动
     mario.y += mario.vy;
     mario.onGround = false;
     
-    // 简单的块碰撞 - Y轴
-    blocks.forEach(b => {
-        if (b.type === 'ground' || b.type === 'brick' || b.type === 'pipe' || b.type === 'question') {
-            if (mario.x + mario.w > b.x && mario.x < b.x + b.w && 
-                mario.y + mario.h > b.y && mario.y < b.y + b.h) {
-                if (mario.vy > 0) {
-                    mario.y = b.y - mario.h;
-                    mario.vy = 0;
-                    mario.onGround = true;
-                    if (b.type === 'question' && !b.hit) { b.hit = true; score += 100; }
-                } else if (mario.vy < 0) {
-                    mario.y = b.y + b.h;
-                    mario.vy = 0;
-                    if (b.type === 'question' && !b.hit) { b.hit = true; score += 100; }
-                }
-            }
-        }
-        if (b.type === 'flagpole' && mario.x + mario.w > b.x && mario.x < b.x + b.w) {
-            won = true;
-        }
-    });
-    
     // 地面
-    if (mario.y + mario.h > GROUND_Y) {
+    if (mario.y + mario.h >= GROUND_Y) {
         mario.y = GROUND_Y - mario.h;
         mario.vy = 0;
         mario.onGround = true;
     }
     
-    // 坑
-    if (mario.y > 500) { gameOver = true; }
-    
-    // 摄像机
+    // 摄像机跟随
     if (mario.x > 350) cameraX = mario.x - 350;
     
     // 敌人
     enemies.forEach(e => {
         if (!e.alive) return;
         e.x += e.vx;
-        if (e.x < cameraX - 50 || e.x > cameraX + 850) e.vx *= -1;
         
+        // 简单边界
+        if (e.x < 500 || e.x > 3500) e.vx *= -1;
+        
+        // 碰撞检测 - 只有马里奥在下时踩死敌人
         if (mario.x + mario.w > e.x && mario.x < e.x + e.w &&
             mario.y + mario.h > e.y && mario.y < e.y + e.h) {
-            if (mario.vy > 0 && mario.y + mario.h < e.y + 20) {
+            // 只有从上方踩中才死亡
+            if (mario.vy > 0 && mario.y + mario.h < e.y + 15) {
                 e.alive = false;
-                mario.vy = -6;
+                mario.vy = -8;
                 score += 100;
-            } else {
-                gameOver = true;
             }
+            // 否则不死亡，只弹开
+        }
+    });
+    
+    // 到达旗杆
+    blocks.forEach(b => {
+        if (b.type === 'flagpole' && Math.abs(mario.x + mario.w/2 - b.x) < 20) {
+            won = true;
         }
     });
 }
@@ -153,7 +119,7 @@ function draw() {
     
     // 云朵
     ctx.fillStyle = '#fff';
-    [[80,60],[280,90],[560,50],[840,80],[1120,60]].forEach(c => {
+    [[100,80],[400,100],[700,60],[1100,90],[1500,70]].forEach(c => {
         ctx.beginPath();
         ctx.arc(c[0]-cameraX*0.3, c[1], 20, 0, Math.PI*2);
         ctx.arc(c[0]+20-cameraX*0.3, c[1], 25, 0, Math.PI*2);
@@ -161,36 +127,24 @@ function draw() {
         ctx.fill();
     });
     
-    // 山丘
+    // 地面
+    ctx.fillStyle = '#C84C0C';
+    ctx.fillRect(0, GROUND_Y, 800, 60);
     ctx.fillStyle = '#00AA00';
-    [[50,GROUND_Y-60],[250,GROUND_Y-40],[550,GROUND_Y-80],[900,GROUND_Y-50],[1200,GROUND_Y-70]].forEach(h => {
-        ctx.beginPath();
-        ctx.moveTo(h[0]-cameraX, GROUND_Y);
-        ctx.lineTo(h[0]+40-cameraX, h[1]);
-        ctx.lineTo(h[0]+80-cameraX, GROUND_Y);
-        ctx.fill();
-    });
+    ctx.fillRect(0, GROUND_Y, 800, 4);
     
     // 块
     blocks.forEach(b => {
         const x = b.x - cameraX;
         if (x > -64 && x < 864) {
-            if (b.type === 'ground') {
-                ctx.fillStyle = '#C84C0C';
-                ctx.fillRect(x, b.y, b.w, b.h);
-                ctx.fillStyle = '#00AA00';
-                ctx.fillRect(x, b.y, b.w, 4);
-            } else if (b.type === 'brick') {
+            if (b.type === 'ground') {}
+            else if (b.type === 'brick') {
                 ctx.fillStyle = '#B85C38';
                 ctx.fillRect(x, b.y, 32, 32);
             } else if (b.type === 'question') {
-                ctx.fillStyle = b.hit ? '#808080' : '#F8981C';
+                ctx.fillStyle = b.hit ? '#666' : '#F8981C';
                 ctx.fillRect(x, b.y, 32, 32);
-                if (!b.hit) {
-                    ctx.fillStyle = '#FFD700';
-                    ctx.font = 'bold 20px Arial';
-                    ctx.fillText('?', x+10, b.y+24);
-                }
+                if (!b.hit) { ctx.fillStyle = '#FFD700'; ctx.font = '20px Arial'; ctx.fillText('?', x+10, b.y+24); }
             } else if (b.type === 'pipe') {
                 ctx.fillStyle = '#00AA00';
                 ctx.fillRect(x, b.y, b.w, b.h);
@@ -200,15 +154,9 @@ function draw() {
             } else if (b.type === 'flagpole') {
                 ctx.fillStyle = '#FFD700';
                 ctx.fillRect(x, b.y, 8, 200);
-                ctx.beginPath();
-                ctx.arc(x+4, b.y, 8, 0, Math.PI*2);
-                ctx.fill();
+                ctx.beginPath(); ctx.arc(x+4, b.y, 8, 0, Math.PI*2); ctx.fill();
                 ctx.fillStyle = '#FF0000';
-                ctx.beginPath();
-                ctx.moveTo(x+8, b.y+15);
-                ctx.lineTo(x+50, b.y+30);
-                ctx.lineTo(x+8, b.y+45);
-                ctx.fill();
+                ctx.beginPath(); ctx.moveTo(x+8,b.y+15); ctx.lineTo(x+50,b.y+30); ctx.lineTo(x+8,b.y+45); ctx.fill();
             }
         }
     });
@@ -220,15 +168,10 @@ function draw() {
         if (x > -50 && x < 850) {
             ctx.fillStyle = '#8B4513';
             ctx.fillRect(x+4, e.y+8, 24, 16);
-            ctx.beginPath();
-            ctx.arc(x+16, e.y+10, 14, Math.PI, 0);
-            ctx.fill();
+            ctx.beginPath(); ctx.arc(x+16, e.y+10, 14, Math.PI, 0); ctx.fill();
             ctx.fillStyle = '#fff';
             ctx.fillRect(x+8, e.y+6, 6, 6);
             ctx.fillRect(x+18, e.y+6, 6, 6);
-            ctx.fillStyle = '#000';
-            ctx.fillRect(x+10, e.y+8, 2, 2);
-            ctx.fillRect(x+20, e.y+8, 2, 2);
         }
     });
     
@@ -248,22 +191,18 @@ function draw() {
     ctx.fillRect(mx+2, mario.y+28, 10, 6);
     ctx.fillRect(mx+16, mario.y+28, 10, 6);
     
-    // 分数
+    // UI
     ctx.fillStyle = '#fff';
     ctx.font = 'bold 20px Arial';
     ctx.fillText('SCORE: ' + String(score).padStart(6,'0'), 20, 30);
-    
-    // 提示
-    ctx.fillStyle = '#fff';
     ctx.font = '14px Arial';
-    ctx.fillText('← → 移动 | 空格 跳跃 | 回车 重来', 260, 480);
+    ctx.fillText('← → 移动 | 空格 跳跃 | 回车 重来', 250, 480);
     
-    // 游戏结束
     if (gameOver) {
         ctx.fillStyle = 'rgba(0,0,0,0.7)';
         ctx.fillRect(0, 0, 800, 500);
         ctx.fillStyle = '#FF0000';
-        ctx.font = 'bold 60px Arial';
+        ctx.font = 'bold 50px Arial';
         ctx.fillText('GAME OVER', 220, 250);
     }
     
@@ -271,8 +210,8 @@ function draw() {
         ctx.fillStyle = 'rgba(0,0,0,0.7)';
         ctx.fillRect(0, 0, 800, 500);
         ctx.fillStyle = '#FFD700';
-        ctx.font = 'bold 60px Arial';
-        ctx.fillText('YOU WIN!', 240, 250);
+        ctx.font = 'bold 50px Arial';
+        ctx.fillText('YOU WIN!', 260, 250);
     }
 }
 
@@ -285,13 +224,12 @@ function loop() {
 document.addEventListener('keydown', e => {
     keys[e.code] = true;
     if (e.code === 'Enter' && (gameOver || won)) {
-        mario = { x: 50, y: GROUND_Y-32, w: 28, h: 32, vx: 0, vy: 0, onGround: true };
+        mario = { x: 100, y: GROUND_Y-32, w: 28, h: 32, vx: 0, vy: 0, onGround: true };
         cameraX = 0;
         gameOver = false;
         won = false;
         score = 0;
         enemies.forEach(e => e.alive = true);
-        blocks.forEach(b => { if (b.type === 'question') b.hit = false; });
     }
 });
 document.addEventListener('keyup', e => keys[e.code] = false);
