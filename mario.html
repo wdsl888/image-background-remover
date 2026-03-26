@@ -1,437 +1,303 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html>
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>超级马里奥 - 第一关</title>
+    <title>超级马里奥</title>
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { background: #000; display: flex; justify-content: center; align-items: center; min-height: 100vh; font-family: Arial, sans-serif; }
-        #game-container { position: relative; width: 800px; height: 600px; background: #5C94FC; overflow: hidden; border: 4px solid #fff; }
-        #score { position: absolute; top: 20px; left: 20px; color: #fff; font-size: 20px; font-weight: bold; text-shadow: 2px 2px 0 #000; z-index: 100; }
-        #instructions { position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%); color: #fff; font-size: 14px; text-shadow: 1px 1px 0 #000; }
-        #message { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: #FFD700; font-size: 48px; font-weight: bold; text-shadow: 3px 3px 0 #000; display: none; z-index: 200; }
+        body { background: #000; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+        canvas { background: #5C94FC; border: 4px solid #fff; }
     </style>
 </head>
 <body>
-    <div id="game-container">
-        <canvas id="game-canvas" width="800" height="600"></canvas>
-        <div id="score">SCORE: 000000</div>
-        <div id="instructions">← → 移动 | 空格 跳跃</div>
-        <div id="message"></div>
-    </div>
+<canvas id="game" width="800" height="500"></canvas>
+<script>
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
 
-    <script>
-        const canvas = document.getElementById('game-canvas');
-        const ctx = canvas.getContext('2d');
-        const scoreEl = document.getElementById('score');
-        const msgEl = document.getElementById('message');
+const GROUND_Y = 440;
+let mario = { x: 50, y: GROUND_Y-32, w: 28, h: 32, vx: 0, vy: 0, onGround: true };
+let keys = {};
+let cameraX = 0;
+let enemies = [];
+let blocks = [];
+let gameOver = false;
+let won = false;
+let score = 0;
 
-        // 游戏常量
-        const GRAVITY = 0.6;
-        const GROUND_Y = 520;
+// 初始化关卡
+function initLevel() {
+    // 地面
+    for (let i = 0; i < 50; i++) blocks.push({ x: i*32, y: GROUND_Y, w: 32, h: 60, type: 'ground' });
+    
+    // 砖块平台
+    const bricks = [
+        [320, 320, 5], [576, 256, 2], [640, 320, 4], [1088, 256, 3],
+        [1280, 192, 2], [1408, 320, 3], [1728, 256, 4], [1856, 192, 2],
+        [2048, 320, 3]
+    ];
+    bricks.forEach(b => {
+        for (let i = 0; i < b[2]; i++) blocks.push({ x: b[0]+i*32, y: b[1], w: 32, h: 32, type: 'brick' });
+    });
+    
+    // 问号箱
+    const questions = [
+        [352, 256], [416, 256], [448, 256], [480, 256], [608, 192],
+        [1120, 192], [1184, 256], [1312, 256], [1760, 192], [2080, 256]
+    ];
+    questions.forEach(q => blocks.push({ x: q[0], y: q[1], w: 32, h: 32, type: 'question', hit: false }));
+    
+    // 管道
+    [[832, 64], [960, 96], [1536, 64], [2496, 64]].forEach(p => 
+        blocks.push({ x: p[0], y: GROUND_Y-p[1], w: 64, h: p[1], type: 'pipe' }));
+    
+    // 敌人
+    [480, 672, 1056, 1344, 1696, 2048, 2240].forEach(x => 
+        enemies.push({ x, y: GROUND_Y-32, w: 32, h: 32, vx: -1, alive: true }));
+    
+    // 旗杆
+    blocks.push({ x: 2720, y: GROUND_Y-200, w: 8, h: 200, type: 'flagpole' });
+}
+
+function update() {
+    if (gameOver || won) return;
+    
+    // 移动
+    if (keys['ArrowLeft'] || keys['KeyA']) { mario.vx = -4; }
+    else if (keys['ArrowRight'] || keys['KeyD']) { mario.vx = 4; }
+    else mario.vx = 0;
+    
+    if ((keys['Space'] || keys['ArrowUp'] || keys['KeyW']) && mario.onGround) {
+        mario.vy = -11;
+        mario.onGround = false;
+    }
+    
+    mario.vy += 0.5;
+    
+    // X移动
+    mario.x += mario.vx;
+    if (mario.x < 0) mario.x = 0;
+    
+    // 简单的块碰撞 - X轴
+    blocks.forEach(b => {
+        if (b.type === 'ground' || b.type === 'brick' || b.type === 'pipe') {
+            if (mario.x + mario.w > b.x && mario.x < b.x + b.w && 
+                mario.y + mario.h > b.y && mario.y < b.y + b.h) {
+                if (mario.vx > 0) mario.x = b.x - mario.w;
+                else if (mario.vx < 0) mario.x = b.x + b.w;
+            }
+        }
+    });
+    
+    // Y移动
+    mario.y += mario.vy;
+    mario.onGround = false;
+    
+    // 简单的块碰撞 - Y轴
+    blocks.forEach(b => {
+        if (b.type === 'ground' || b.type === 'brick' || b.type === 'pipe' || b.type === 'question') {
+            if (mario.x + mario.w > b.x && mario.x < b.x + b.w && 
+                mario.y + mario.h > b.y && mario.y < b.y + b.h) {
+                if (mario.vy > 0) {
+                    mario.y = b.y - mario.h;
+                    mario.vy = 0;
+                    mario.onGround = true;
+                    if (b.type === 'question' && !b.hit) { b.hit = true; score += 100; }
+                } else if (mario.vy < 0) {
+                    mario.y = b.y + b.h;
+                    mario.vy = 0;
+                    if (b.type === 'question' && !b.hit) { b.hit = true; score += 100; }
+                }
+            }
+        }
+        if (b.type === 'flagpole' && mario.x + mario.w > b.x && mario.x < b.x + b.w) {
+            won = true;
+        }
+    });
+    
+    // 地面
+    if (mario.y + mario.h > GROUND_Y) {
+        mario.y = GROUND_Y - mario.h;
+        mario.vy = 0;
+        mario.onGround = true;
+    }
+    
+    // 坑
+    if (mario.y > 500) { gameOver = true; }
+    
+    // 摄像机
+    if (mario.x > 350) cameraX = mario.x - 350;
+    
+    // 敌人
+    enemies.forEach(e => {
+        if (!e.alive) return;
+        e.x += e.vx;
+        if (e.x < cameraX - 50 || e.x > cameraX + 850) e.vx *= -1;
         
-        // 颜色
-        const COLORS = {
-            ground: '#C84C0C',
-            groundDark: '#9C3C0C',
-            brick: '#B85C38',
-            brickDark: '#8C4C2C',
-            question: '#F8981C',
-            questionDark: '#D8781C',
-            pipe: '#00AA00',
-            pipeDark: '#008800'
-        };
-
-        // 马里奥
-        const mario = {
-            x: 100, y: GROUND_Y - 32, width: 28, height: 32,
-            vx: 0, vy: 0, onGround: true, direction: 1,
-            frame: 0, frameTimer: 0, alive: true, won: false
-        };
-
-        const keys = { left: false, right: false, jump: false };
-        let cameraX = 0;
-        let score = 0;
-        
-        const blocks = [];
-        const enemies = [];
-        const coins = [];
-        const decorations = [];
-
-        // 初始化第一关
-        function initLevel() {
-            // 地面 (分几段，中间有坑)
-            const groundSections = [
-                { start: 0, end: 40 },
-                { start: 52, end: 160 },
-                { start: 172, end: 300 }
-            ];
-            groundSections.forEach(sec => {
-                for (let i = sec.start; i < sec.end; i++) {
-                    blocks.push({ type: 'ground', x: i * 32, y: GROUND_Y, width: 32, height: 80 });
-                }
-            });
-
-            // 砖块
-            const brickPatterns = [
-                { x: 384, y: 320, count: 5 },
-                { x: 640, y: 256, count: 2 },
-                { x: 704, y: 320, count: 4 },
-                { x: 1152, y: 256, count: 3 },
-                { x: 1344, y: 192, count: 2 },
-                { x: 1472, y: 320, count: 3 },
-                { x: 1792, y: 256, count: 4 },
-                { x: 1920, y: 192, count: 2 },
-                { x: 2112, y: 320, count: 3 },
-            ];
-            brickPatterns.forEach(p => {
-                for (let i = 0; i < p.count; i++) {
-                    blocks.push({ type: 'brick', x: p.x + i * 32, y: p.y, width: 32, height: 32 });
-                }
-            });
-
-            // 问号箱
-            const questionPatterns = [
-                { x: 416, y: 256, count: 1 },
-                { x: 480, y: 256, count: 3 },
-                { x: 672, y: 192, count: 1 },
-                { x: 1184, y: 192, count: 1 },
-                { x: 1248, y: 256, count: 1 },
-                { x: 1376, y: 256, count: 1 },
-                { x: 1824, y: 192, count: 1 },
-                { x: 2144, y: 256, count: 1 },
-            ];
-            questionPatterns.forEach(p => {
-                for (let i = 0; i < p.count; i++) {
-                    blocks.push({ type: 'question', x: p.x + i * 32, y: p.y, width: 32, height: 32, hit: false });
-                }
-            });
-
-            // 管道
-            const pipes = [
-                { x: 896, height: 64 }, { x: 1024, height: 96 },
-                { x: 1600, height: 64 }, { x: 2560, height: 64 }
-            ];
-            pipes.forEach(p => {
-                blocks.push({ type: 'pipe', x: p.x, y: GROUND_Y - p.height, width: 64, height: p.height });
-            });
-
-            // 敌人
-            [500, 700, 1100, 1400, 1750, 2050, 2300].forEach(x => {
-                enemies.push({ type: 'goomba', x, y: GROUND_Y - 32, width: 32, height: 32, vx: -1, vy: 0, alive: true, frame: 0 });
-            });
-            enemies.push({ type: 'koopa', x: 1856, y: GROUND_Y - 40, width: 32, height: 40, vx: -1, vy: 0, alive: true, inShell: false, frame: 0 });
-
-            // 云朵
-            [{x:100,y:80},{x:300,y:120},{x:600,y:60},{x:900,y:100},{x:1300,y:70},{x:1600,y:110},{x:2000,y:80}].forEach(c => {
-                decorations.push({ type: 'cloud', x: c.x, y: c.y });
-            });
-
-            // 山丘
-            [{x:50,y:GROUND_Y-80},{x:250,y:GROUND_Y-60},{x:550,y:GROUND_Y-100},{x:850,y:GROUND_Y-70},{x:1200,y:GROUND_Y-90},{x:1500,y:GROUND_Y-60},{x:1900,y:GROUND_Y-80}].forEach(h => {
-                decorations.push({ type: 'hill', x: h.x, y: h.y });
-            });
-
-            // 灌木
-            [{x:150,y:GROUND_Y-32},{x:450,y:GROUND_Y-32},{x:750,y:GROUND_Y-32},{x:1100,y:GROUND_Y-32},{x:1450,y:GROUND_Y-32},{x:1800,y:GROUND_Y-32},{x:2200,y:GROUND_Y-32}].forEach(b => {
-                decorations.push({ type: 'bush', x: b.x, y: b.y });
-            });
-
-            // 旗杆
-            blocks.push({ type: 'flagpole', x: 2800, y: GROUND_Y - 240, width: 8, height: 240 });
+        if (mario.x + mario.w > e.x && mario.x < e.x + e.w &&
+            mario.y + mario.h > e.y && mario.y < e.y + e.h) {
+            if (mario.vy > 0 && mario.y + mario.h < e.y + 20) {
+                e.alive = false;
+                mario.vy = -6;
+                score += 100;
+            } else {
+                gameOver = true;
+            }
         }
+    });
+}
 
-        // 碰撞检测
-        function checkCollision(r1, r2) {
-            return r1.x < r2.x + r2.width && r1.x + r1.width > r2.x &&
-                   r1.y < r2.y + r2.height && r1.y + r1.height > r2.y;
-        }
-
-        // 块碰撞检测（返回碰撞方向）
-        function blockCollision(rect, block) {
-            const dx = (rect.x + rect.width/2) - (block.x + block.width/2);
-            const dy = (rect.y + rect.height/2) - (block.y + block.height/2);
-            const w = (rect.width + block.width) / 2;
-            const h = (rect.height + block.height) / 2;
-            if (Math.abs(dx) < w && Math.abs(dy) < h) {
-                const cross = w * dy - h * dx;
-                if (Math.abs(cross) > w * h) {
-                    return dx > 0 ? 'left' : 'right';
+function draw() {
+    // 背景
+    ctx.fillStyle = '#5C94FC';
+    ctx.fillRect(0, 0, 800, 500);
+    
+    // 云朵
+    ctx.fillStyle = '#fff';
+    [[80,60],[280,90],[560,50],[840,80],[1120,60]].forEach(c => {
+        ctx.beginPath();
+        ctx.arc(c[0]-cameraX*0.3, c[1], 20, 0, Math.PI*2);
+        ctx.arc(c[0]+20-cameraX*0.3, c[1], 25, 0, Math.PI*2);
+        ctx.arc(c[0]+40-cameraX*0.3, c[1], 20, 0, Math.PI*2);
+        ctx.fill();
+    });
+    
+    // 山丘
+    ctx.fillStyle = '#00AA00';
+    [[50,GROUND_Y-60],[250,GROUND_Y-40],[550,GROUND_Y-80],[900,GROUND_Y-50],[1200,GROUND_Y-70]].forEach(h => {
+        ctx.beginPath();
+        ctx.moveTo(h[0]-cameraX, GROUND_Y);
+        ctx.lineTo(h[0]+40-cameraX, h[1]);
+        ctx.lineTo(h[0]+80-cameraX, GROUND_Y);
+        ctx.fill();
+    });
+    
+    // 块
+    blocks.forEach(b => {
+        const x = b.x - cameraX;
+        if (x > -64 && x < 864) {
+            if (b.type === 'ground') {
+                ctx.fillStyle = '#C84C0C';
+                ctx.fillRect(x, b.y, b.w, b.h);
+                ctx.fillStyle = '#00AA00';
+                ctx.fillRect(x, b.y, b.w, 4);
+            } else if (b.type === 'brick') {
+                ctx.fillStyle = '#B85C38';
+                ctx.fillRect(x, b.y, 32, 32);
+            } else if (b.type === 'question') {
+                ctx.fillStyle = b.hit ? '#808080' : '#F8981C';
+                ctx.fillRect(x, b.y, 32, 32);
+                if (!b.hit) {
+                    ctx.fillStyle = '#FFD700';
+                    ctx.font = 'bold 20px Arial';
+                    ctx.fillText('?', x+10, b.y+24);
                 }
-                return dy > 0 ? 'top' : 'bottom';
-            }
-            return null;
-        }
-
-        // 更新游戏
-        function update() {
-            if (!mario.alive || mario.won) return;
-
-            // 移动
-            if (keys.left) { mario.vx = -4; mario.direction = -1; }
-            else if (keys.right) { mario.vx = 4; mario.direction = 1; }
-            else mario.vx = 0;
-
-            // 跳跃
-            if (keys.jump && mario.onGround) {
-                mario.vy = -12;
-                mario.onGround = false;
-            }
-
-            mario.vy += GRAVITY;
-
-            // 水平移动 + 碰撞
-            mario.x += mario.vx;
-            blocks.forEach(b => {
-                if (b.type === 'ground' || b.type === 'brick' || b.type === 'pipe') {
-                    const col = blockCollision(mario, b);
-                    if (col === 'left' || col === 'right') {
-                        mario.vx = 0;
-                        if (col === 'left') mario.x = b.x + b.width;
-                        else mario.x = b.x - mario.width;
-                    }
-                }
-            });
-
-            // 垂直移动 + 碰撞
-            mario.y += mario.vy;
-            mario.onGround = false;
-            blocks.forEach(b => {
-                if (b.type === 'ground' || b.type === 'brick' || b.type === 'pipe') {
-                    const col = blockCollision(mario, b);
-                    if (col === 'top') {
-                        mario.y = b.y + b.height;
-                        mario.vy = 0;
-                    } else if (col === 'bottom') {
-                        mario.y = b.y - mario.height;
-                        mario.vy = 0;
-                        mario.onGround = true;
-                        // 顶到问号箱
-                        if (b.type === 'question' && !b.hit) {
-                            b.hit = true;
-                            score += 100;
-                            scoreEl.textContent = 'SCORE: ' + String(score).padStart(6, '0');
-                        }
-                    }
-                }
-            });
-
-            // 地面
-            if (mario.y + mario.height >= GROUND_Y) {
-                mario.y = GROUND_Y - mario.height;
-                mario.vy = 0;
-                mario.onGround = true;
-            }
-
-            // 掉坑里
-            if (mario.y > 600) {
-                mario.alive = false;
-                msgEl.textContent = 'GAME OVER';
-                msgEl.style.display = 'block';
-            }
-
-            // 边界
-            if (mario.x < 0) mario.x = 0;
-            if (mario.x > 2800) mario.x = 2800;
-
-            // 摄像机
-            if (mario.x > 400) cameraX = mario.x - 400;
-            if (cameraX < 0) cameraX = 0;
-            if (cameraX > 2200) cameraX = 2200;
-
-            // 敌人更新
-            enemies.forEach(e => {
-                if (!e.alive) return;
-                e.x += e.vx;
-                e.frame++;
-                if (e.x < cameraX - 50 || e.x > cameraX + 850) e.vx *= -1;
-
-                if (checkCollision(mario, e)) {
-                    if (mario.vy > 0 && mario.y + mario.height < e.y + e.height * 0.5) {
-                        e.alive = false;
-                        mario.vy = -6;
-                        score += 100;
-                        scoreEl.textContent = 'SCORE: ' + String(score).padStart(6, '0');
-                    } else {
-                        mario.alive = false;
-                        msgEl.textContent = 'GAME OVER';
-                        msgEl.style.display = 'block';
-                    }
-                }
-            });
-
-            // 到达旗杆
-            const flag = blocks.find(b => b.type === 'flagpole');
-            if (flag && checkCollision(mario, flag)) {
-                mario.won = true;
-                msgEl.textContent = 'YOU WIN!';
-                msgEl.style.display = 'block';
-            }
-
-            mario.frameTimer++;
-            if (mario.frameTimer > 8) { mario.frame++; mario.frameTimer = 0; }
-        }
-
-        // 绘制
-        function draw() {
-            ctx.fillStyle = '#5C94FC';
-            ctx.fillRect(0, 0, 800, 600);
-
-            // 装饰
-            decorations.forEach(d => {
-                const dx = d.type === 'cloud' ? 0 : (d.type === 'hill' ? 80 : 60);
-                if (d.x - cameraX > -dx && d.x - cameraX < 800 + dx) {
-                    ctx.fillStyle = d.type === 'cloud' ? '#fff' : '#00AA00';
-                    if (d.type === 'cloud') {
-                        ctx.beginPath();
-                        ctx.arc(d.x + 20 - cameraX, d.y + 15, 15, 0, Math.PI*2);
-                        ctx.arc(d.x + 35 - cameraX, d.y + 15, 20, 0, Math.PI*2);
-                        ctx.arc(d.x + 50 - cameraX, d.y + 15, 15, 0, Math.PI*2);
-                        ctx.fill();
-                    } else if (d.type === 'hill') {
-                        ctx.beginPath();
-                        ctx.moveTo(d.x - cameraX, d.y + 80);
-                        ctx.lineTo(d.x - cameraX + 40, d.y);
-                        ctx.lineTo(d.x - cameraX + 80, d.y + 80);
-                        ctx.fill();
-                    } else {
-                        ctx.beginPath();
-                        ctx.arc(d.x + 15 - cameraX, d.y + 15, 15, 0, Math.PI*2);
-                        ctx.arc(d.x + 30 - cameraX, d.y + 10, 18, 0, Math.PI*2);
-                        ctx.arc(d.x + 45 - cameraX, d.y + 15, 15, 0, Math.PI*2);
-                        ctx.fill();
-                    }
-                }
-            });
-
-            // 地面
-            ctx.fillStyle = COLORS.ground;
-            ctx.fillRect(0, GROUND_Y, 800, 80);
-            ctx.fillStyle = '#00AA00';
-            ctx.fillRect(0, GROUND_Y, 800, 4);
-
-            // 块
-            blocks.forEach(b => {
-                if (b.x - cameraX > -32 && b.x - cameraX < 832) {
-                    const x = b.x - cameraX;
-                    if (b.type === 'brick') {
-                        ctx.fillStyle = COLORS.brick;
-                        ctx.fillRect(x, b.y, 32, 32);
-                        ctx.fillStyle = COLORS.brickDark;
-                        ctx.fillRect(x, b.y + 15, 32, 2);
-                    } else if (b.type === 'question') {
-                        if (!b.hit) {
-                            ctx.fillStyle = COLORS.question;
-                            ctx.fillRect(x, b.y, 32, 32);
-                            ctx.fillStyle = '#FFCC00';
-                            ctx.font = 'bold 20px Arial';
-                            ctx.fillText('?', x + 10, b.y + 24);
-                        }
-                    } else if (b.type === 'pipe') {
-                        ctx.fillStyle = COLORS.pipe;
-                        ctx.fillRect(x, b.y, b.width, b.height);
-                        ctx.fillStyle = '#00CC00';
-                        ctx.fillRect(x, b.y, 8, b.height);
-                        ctx.fillRect(x - 4, b.y - 8, b.width + 8, 16);
-                    } else if (b.type === 'flagpole') {
-                        ctx.fillStyle = '#FFD700';
-                        ctx.fillRect(x, b.y, 8, 240);
-                        ctx.beginPath();
-                        ctx.arc(x + 4, b.y, 10, 0, Math.PI*2);
-                        ctx.fill();
-                        ctx.fillStyle = '#FF0000';
-                        ctx.beginPath();
-                        ctx.moveTo(x + 8, b.y + 20);
-                        ctx.lineTo(x + 60, b.y + 35);
-                        ctx.lineTo(x + 8, b.y + 50);
-                        ctx.fill();
-                    }
-                }
-            });
-
-            // 敌人
-            enemies.forEach(e => {
-                if (e.alive && e.x - cameraX > -50 && e.x - cameraX < 850) {
-                    const x = e.x - cameraX;
-                    if (e.type === 'goomba') {
-                        ctx.fillStyle = '#8B4513';
-                        ctx.fillRect(x + 4, e.y + 8, 24, 16);
-                        ctx.beginPath();
-                        ctx.arc(x + 16, e.y + 10, 14, Math.PI, 0);
-                        ctx.fill();
-                        const f = Math.floor(e.frame / 8) % 2;
-                        ctx.fillStyle = '#000';
-                        ctx.fillRect(x + 4 + f*2, e.y + 24, 8, 6);
-                        ctx.fillRect(x + 20 - f*2, e.y + 24, 8, 6);
-                        ctx.fillStyle = '#fff';
-                        ctx.fillRect(x + 8, e.y + 6, 6, 6);
-                        ctx.fillRect(x + 18, e.y + 6, 6, 6);
-                    }
-                }
-            });
-
-            // 马里奥
-            const mx = mario.x - cameraX;
-            const my = mario.y;
-            if (mx > -30 && mx < 830) {
-                ctx.save();
-                if (mario.direction === -1) {
-                    ctx.translate(mx + mario.width, 0);
-                    ctx.scale(-1, 1);
-                    ctx.translate(-mx, 0);
-                }
+            } else if (b.type === 'pipe') {
+                ctx.fillStyle = '#00AA00';
+                ctx.fillRect(x, b.y, b.w, b.h);
+                ctx.fillStyle = '#00CC00';
+                ctx.fillRect(x, b.y, 8, b.h);
+                ctx.fillRect(x-4, b.y-8, b.w+8, 16);
+            } else if (b.type === 'flagpole') {
+                ctx.fillStyle = '#FFD700';
+                ctx.fillRect(x, b.y, 8, 200);
+                ctx.beginPath();
+                ctx.arc(x+4, b.y, 8, 0, Math.PI*2);
+                ctx.fill();
                 ctx.fillStyle = '#FF0000';
-                ctx.fillRect(mx + 4, my + 8, 20, 16);
-                ctx.fillStyle = '#FFCC99';
-                ctx.fillRect(mx + 4, my, 20, 12);
-                ctx.fillStyle = '#FF0000';
-                ctx.fillRect(mx + 2, my - 2, 24, 6);
-                ctx.fillRect(mx, my, 4, 4);
-                ctx.fillStyle = '#000';
-                ctx.fillRect(mx + 14, my + 4, 4, 4);
-                ctx.fillStyle = '#0000FF';
-                ctx.fillRect(mx + 4, my + 20, 20, 12);
-                ctx.fillStyle = '#8B4513';
-                ctx.fillRect(mx + 2, my + 28, 10, 6);
-                ctx.fillRect(mx + 16, my + 28, 10, 6);
-                ctx.restore();
+                ctx.beginPath();
+                ctx.moveTo(x+8, b.y+15);
+                ctx.lineTo(x+50, b.y+30);
+                ctx.lineTo(x+8, b.y+45);
+                ctx.fill();
             }
         }
-
-        function gameLoop() {
-            update();
-            draw();
-            requestAnimationFrame(gameLoop);
+    });
+    
+    // 敌人
+    enemies.forEach(e => {
+        if (!e.alive) return;
+        const x = e.x - cameraX;
+        if (x > -50 && x < 850) {
+            ctx.fillStyle = '#8B4513';
+            ctx.fillRect(x+4, e.y+8, 24, 16);
+            ctx.beginPath();
+            ctx.arc(x+16, e.y+10, 14, Math.PI, 0);
+            ctx.fill();
+            ctx.fillStyle = '#fff';
+            ctx.fillRect(x+8, e.y+6, 6, 6);
+            ctx.fillRect(x+18, e.y+6, 6, 6);
+            ctx.fillStyle = '#000';
+            ctx.fillRect(x+10, e.y+8, 2, 2);
+            ctx.fillRect(x+20, e.y+8, 2, 2);
         }
+    });
+    
+    // 马里奥
+    const mx = mario.x - cameraX;
+    ctx.fillStyle = '#FF0000';
+    ctx.fillRect(mx+4, mario.y+8, 20, 16);
+    ctx.fillStyle = '#FFCC99';
+    ctx.fillRect(mx+4, mario.y, 20, 12);
+    ctx.fillStyle = '#FF0000';
+    ctx.fillRect(mx+2, mario.y-2, 24, 6);
+    ctx.fillStyle = '#000';
+    ctx.fillRect(mx+14, mario.y+4, 4, 4);
+    ctx.fillStyle = '#0000FF';
+    ctx.fillRect(mx+4, mario.y+20, 20, 12);
+    ctx.fillStyle = '#8B4513';
+    ctx.fillRect(mx+2, mario.y+28, 10, 6);
+    ctx.fillRect(mx+16, mario.y+28, 10, 6);
+    
+    // 分数
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 20px Arial';
+    ctx.fillText('SCORE: ' + String(score).padStart(6,'0'), 20, 30);
+    
+    // 提示
+    ctx.fillStyle = '#fff';
+    ctx.font = '14px Arial';
+    ctx.fillText('← → 移动 | 空格 跳跃 | 回车 重来', 260, 480);
+    
+    // 游戏结束
+    if (gameOver) {
+        ctx.fillStyle = 'rgba(0,0,0,0.7)';
+        ctx.fillRect(0, 0, 800, 500);
+        ctx.fillStyle = '#FF0000';
+        ctx.font = 'bold 60px Arial';
+        ctx.fillText('GAME OVER', 220, 250);
+    }
+    
+    if (won) {
+        ctx.fillStyle = 'rgba(0,0,0,0.7)';
+        ctx.fillRect(0, 0, 800, 500);
+        ctx.fillStyle = '#FFD700';
+        ctx.font = 'bold 60px Arial';
+        ctx.fillText('YOU WIN!', 240, 250);
+    }
+}
 
-        // 键盘
-        document.addEventListener('keydown', e => {
-            if (e.code === 'ArrowLeft' || e.code === 'KeyA') keys.left = true;
-            if (e.code === 'ArrowRight' || e.code === 'KeyD') keys.right = true;
-            if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW') {
-                keys.jump = true;
-                e.preventDefault();
-            }
-            if (e.code === 'Enter' && (!mario.alive || mario.won)) {
-                mario.x = 100; mario.y = GROUND_Y - 32;
-                mario.vx = 0; mario.vy = 0; mario.alive = true; mario.won = false;
-                score = 0; scoreEl.textContent = 'SCORE: 000000';
-                msgEl.style.display = 'none';
-                cameraX = 0;
-                enemies.forEach(e => e.alive = true);
-                blocks.forEach(b => { if (b.type === 'question') b.hit = false; });
-            }
-        });
+function loop() {
+    update();
+    draw();
+    requestAnimationFrame(loop);
+}
 
-        document.addEventListener('keyup', e => {
-            if (e.code === 'ArrowLeft' || e.code === 'KeyA') keys.left = false;
-            if (e.code === 'ArrowRight' || e.code === 'KeyD') keys.right = false;
-            if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW') keys.jump = false;
-        });
+document.addEventListener('keydown', e => {
+    keys[e.code] = true;
+    if (e.code === 'Enter' && (gameOver || won)) {
+        mario = { x: 50, y: GROUND_Y-32, w: 28, h: 32, vx: 0, vy: 0, onGround: true };
+        cameraX = 0;
+        gameOver = false;
+        won = false;
+        score = 0;
+        enemies.forEach(e => e.alive = true);
+        blocks.forEach(b => { if (b.type === 'question') b.hit = false; });
+    }
+});
+document.addEventListener('keyup', e => keys[e.code] = false);
 
-        initLevel();
-        gameLoop();
-    </script>
+initLevel();
+loop();
+</script>
 </body>
 </html>
