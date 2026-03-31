@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const API_KEY = 'wLsWszrmjNbrGSRRM8Y8jbHc';
+export const runtime = 'edge';
+
+const API_KEY = 'ddYHS2NAM2czVSYpP54Gz5rF';
 
 export async function POST(request: NextRequest) {
   try {
